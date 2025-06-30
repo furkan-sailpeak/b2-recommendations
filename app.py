@@ -241,7 +241,6 @@ logo_right = image_to_base64("logos/sailpeak.png")
 # Thread-local storage for WebDriver instances
 thread_local = threading.local()
 
-# Replace get_driver() function with:
 def get_driver():
     """Get a WebDriver instance for the current thread"""
     if not hasattr(thread_local, 'driver'):
@@ -254,24 +253,53 @@ def get_driver():
         options.add_argument('--disable-javascript')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--remote-debugging-port=9222')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-plugins')
+        options.add_argument('--disable-web-security')
+        options.add_argument('--allow-running-insecure-content')
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
         
-        # For cloud deployment, you might need to use webdriver-manager
         try:
+            # Try different Chrome binary locations for cloud deployment
+            import platform
+            if platform.system() == 'Linux':
+                # Common paths for Chromium on Linux systems
+                possible_paths = [
+                    '/usr/bin/chromium',
+                    '/usr/bin/chromium-browser',
+                    '/usr/bin/google-chrome',
+                    '/usr/bin/google-chrome-stable'
+                ]
+                
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        options.binary_location = path
+                        break
+            
+            # Use webdriver-manager with fallback
             from webdriver_manager.chrome import ChromeDriverManager
             from selenium.webdriver.chrome.service import Service
-            service = Service(ChromeDriverManager().install())
-            thread_local.driver = webdriver.Chrome(service=service, options=options)
-        except:
-            # Fallback for local development
-            thread_local.driver = webdriver.Chrome(options=options)
+            
+            try:
+                service = Service(ChromeDriverManager().install())
+                thread_local.driver = webdriver.Chrome(service=service, options=options)
+            except Exception as e:
+                st.error(f"ChromeDriverManager failed: {e}")
+                # Fallback to system chromedriver
+                thread_local.driver = webdriver.Chrome(options=options)
+                
+        except Exception as e:
+            st.error(f"Could not initialize Chrome driver: {e}")
+            return None
             
         thread_local.driver.set_page_load_timeout(30)
         thread_local.driver.implicitly_wait(5)
     
     return thread_local.driver
+    
 def cleanup_driver():
     """Clean up the WebDriver for the current thread"""
     if hasattr(thread_local, 'driver'):
