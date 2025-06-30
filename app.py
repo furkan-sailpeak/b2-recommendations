@@ -73,6 +73,63 @@ st.markdown("""
         width: auto;
     }
     
+    /* Hierarchical navigation styles */
+    .nav-item {
+        margin: 0.25rem 0;
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-left: 3px solid transparent;
+        font-size: 0.9rem;
+    }
+    
+    .nav-item:hover {
+        background: #f1f5f9;
+        border-left-color: #EBD37F;
+    }
+    
+    .nav-item.active {
+        background: #EBD37F;
+        border-left-color: #d4c46a;
+        font-weight: 600;
+    }
+    
+    .nav-item.has-children {
+        font-weight: 500;
+    }
+    
+    .nav-item.leaf {
+        color: #059669;
+        font-size: 0.85rem;
+    }
+    
+    .nav-item.leaf.selected {
+        background: #d1fae5;
+        border-left-color: #059669;
+        font-weight: 600;
+    }
+    
+    .nav-children {
+        margin-left: 1rem;
+        padding-left: 0.5rem;
+        border-left: 1px solid #e2e8f0;
+    }
+    
+    .breadcrumb {
+        background: #f8fafc;
+        padding: 0.75rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+    
+    .breadcrumb .current {
+        font-weight: 600;
+        color: #1e293b;
+    }
+    
     /* Score display */
     .score {
         font-size: 2.5rem;
@@ -227,6 +284,10 @@ if 'accepted_improvements' not in st.session_state:
     st.session_state.accepted_improvements = set()
 if 'estimated_score_gain' not in st.session_state:
     st.session_state.estimated_score_gain = 0
+if 'navigation_path' not in st.session_state:
+    st.session_state.navigation_path = []
+if 'expanded_nodes' not in st.session_state:
+    st.session_state.expanded_nodes = set()
 
 def image_to_base64(path):
     with open(path, "rb") as f:
@@ -244,6 +305,202 @@ def load_belfius_data():
     except Exception as e:
         st.error(f"Could not load data file: {e}")
         return None
+
+def build_url_hierarchy(data):
+    """Build hierarchical structure from URLs"""
+    hierarchy = {}
+    
+    for idx, row in data.iterrows():
+        url = row['URL']
+        
+        # Clean up URL and extract path
+        if 'belfius.be' in url:
+            path_part = url.split('belfius.be')[-1]
+            if path_part.startswith('/'):
+                path_part = path_part[1:]
+            
+            # Remove file extensions and query parameters
+            path_part = re.sub(r'\.(aspx|html).*$', '', path_part)
+            path_part = path_part.rstrip('/')
+            
+            if not path_part:
+                path_part = 'home'
+            
+            # Split path into components
+            path_components = path_part.split('/')
+            
+            # Build hierarchy
+            current_level = hierarchy
+            full_path = []
+            
+            for component in path_components:
+                full_path.append(component)
+                path_key = '/'.join(full_path)
+                
+                if component not in current_level:
+                    current_level[component] = {
+                        '_children': {},
+                        '_data': None,
+                        '_path': path_key
+                    }
+                
+                # If this is the last component, store the data
+                if component == path_components[-1]:
+                    current_level[component]['_data'] = row
+                
+                current_level = current_level[component]['_children']
+    
+    return hierarchy
+
+def render_navigation_node(node_name, node_data, level=0, parent_path="", show_all=False, is_last=True, prefix=""):
+    """Render a single navigation node in repository-style format with proper tree structure"""
+    current_path = f"{parent_path}/{node_name}" if parent_path else node_name
+    has_children = len(node_data['_children']) > 0
+    has_data = node_data['_data'] is not None
+    
+    # Check if this node or its children have non-compliant pages
+    def has_non_compliant_pages(node):
+        if node['_data'] is not None:
+            return node['_data']['Compliance Level'] < 70
+        for child in node['_children'].values():
+            if has_non_compliant_pages(child):
+                return True
+        return False
+    
+    # Skip this node if it has no non-compliant pages and show_all is False
+    if not show_all and not has_non_compliant_pages(node_data):
+        return
+    
+    # Create unique key for this node
+    node_key = f"nav_{current_path}_{level}"
+    
+    # Tree structure symbols
+    if level == 0:
+        tree_symbol = ""
+        new_prefix = ""
+    else:
+        tree_symbol = "└── " if is_last else "├── "
+        new_prefix = prefix + ("    " if is_last else "│   ")
+    
+    # Determine node styling
+    if has_data and not has_children:
+        # Leaf node (file) - use document icon
+        score = node_data['_data']['Compliance Level']
+        
+        # Skip compliant pages unless show_all is True
+        if not show_all and score >= 70:
+            return
+        
+        # File icon with status
+        if score < 50:
+            file_icon = "📄"
+            status_color = "#dc2626"  # Red
+        elif score < 70:
+            file_icon = "📄"
+            status_color = "#f59e0b"  # Yellow
+        else:
+            file_icon = "📄"
+            status_color = "#059669"  # Green
+        
+        display_text = f"{prefix}{tree_symbol}{file_icon} {node_name}"
+        score_text = f"({score}%)"
+        
+        # Custom styling for repository look with proper selection highlighting
+        is_selected = (st.session_state.selected_url_info is not None and 
+                      node_data['_data']['URL'] == st.session_state.selected_url_info['URL'])
+        
+        st.markdown(f"""
+        <div style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; 
+                    font-size: 0.8rem; 
+                    padding: 0.2rem 0.5rem; 
+                    margin: 0.05rem 0;
+                    background: {'#e3f2fd' if is_selected else 'transparent'};
+                    border-radius: 3px;
+                    border-left: 3px solid {'#1976d2' if is_selected else 'transparent'};
+                    white-space: pre;">
+            <span style="color: #666;">{display_text}</span>
+            <span style="color: {status_color}; font-weight: 600; margin-left: 8px;">{score_text}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("Select", key=node_key, help=f"Score: {score}%"):
+            st.session_state.selected_url_info = node_data['_data']
+            st.session_state.navigation_path = current_path.split('/')
+            st.rerun()
+            
+    elif has_children:
+        # Parent node (folder) - use folder icon
+        is_expanded = current_path in st.session_state.expanded_nodes
+        
+        # Folder icon with expand/collapse state
+        if level == 0:
+            folder_icon = "🏠" if node_name == "home" else "📂"
+            display_text = f"{folder_icon} {node_name}/"
+        else:
+            folder_icon = "📂" if is_expanded else "📁"
+            display_text = f"{prefix}{tree_symbol}{folder_icon} {node_name}/"
+        
+        # Repository-style folder display
+        st.markdown(f"""
+        <div style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; 
+                    font-size: 0.8rem; 
+                    padding: 0.2rem 0.5rem; 
+                    margin: 0.05rem 0;
+                    font-weight: 600;
+                    color: #1976d2;
+                    white-space: pre;">
+            {display_text}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("Toggle", key=node_key):
+            if is_expanded:
+                st.session_state.expanded_nodes.discard(current_path)
+            else:
+                st.session_state.expanded_nodes.add(current_path)
+            st.rerun()
+        
+        # Show children if expanded
+        if is_expanded:
+            # Sort children: folders first, then files
+            folders = [(name, data) for name, data in node_data['_children'].items() if len(data['_children']) > 0]
+            files = [(name, data) for name, data in node_data['_children'].items() if len(data['_children']) == 0]
+            all_children = sorted(folders) + sorted(files)
+            
+            # Filter children based on show_all setting
+            visible_children = []
+            for child_name, child_data in all_children:
+                def has_non_compliant_pages_recursive(node):
+                    if node['_data'] is not None:
+                        return node['_data']['Compliance Level'] < 70
+                    for child in node['_children'].values():
+                        if has_non_compliant_pages_recursive(child):
+                            return True
+                    return False
+                
+                if show_all or has_non_compliant_pages_recursive(child_data):
+                    visible_children.append((child_name, child_data))
+            
+            for idx, (child_name, child_data) in enumerate(visible_children):
+                is_last_child = (idx == len(visible_children) - 1)
+                render_navigation_node(child_name, child_data, level + 1, current_path, show_all, is_last_child, new_prefix)
+
+def render_breadcrumb():
+    """Render breadcrumb navigation"""
+    if st.session_state.navigation_path:
+        breadcrumb_items = []
+        for i, item in enumerate(st.session_state.navigation_path):
+            if i == len(st.session_state.navigation_path) - 1:
+                breadcrumb_items.append(f'<span class="current">{item}</span>')
+            else:
+                breadcrumb_items.append(item)
+        
+        breadcrumb_text = " → ".join(breadcrumb_items)
+        st.markdown(f"""
+        <div class="breadcrumb">
+            <strong>Current Path:</strong> belfius.be → {breadcrumb_text}
+        </div>
+        """, unsafe_allow_html=True)
 
 def extract_clean_text(url):
     """Extract text using requests + BeautifulSoup (cloud-friendly)"""
@@ -364,29 +621,6 @@ def detect_language_from_url(url):
     elif '/en/' in url or '/english/' in url:
         return 'English (EN)'
     return 'Dutch (NL)'
-
-def extract_url_hierarchy(url):
-    """Extract clean URL path for display"""
-    try:
-        path = url.split('belfius.be')[-1]
-        if path.startswith('/'):
-            path = path[1:]
-        
-        path = path.replace('.aspx', '').replace('.html', '')
-        path = path.replace('/index', '')
-        
-        if path.endswith('/'):
-            path = path[:-1]
-            
-        return path if path else 'home'
-    except:
-        return url
-
-def create_hierarchical_filter(data):
-    """Create hierarchical filters for language -> page type -> URL"""
-    data['Language'] = data['URL'].apply(detect_language_from_url)
-    data['URL_Path'] = data['URL'].apply(extract_url_hierarchy)
-    return data
 
 def get_recommendations_with_gemini(text, url, page_score, page_type, api_key):
     """Get sentence-by-sentence recommendations using Gemini API"""
@@ -537,20 +771,26 @@ def render_url_info(url_info):
     </div>
     """, unsafe_allow_html=True)
 
-def calculate_score_improvement(sentence_data, current_score):
+def calculate_score_improvement(sentence_data, current_score, total_sentences):
     """Calculate estimated score improvement from fixing a sentence"""
     issue_score = sentence_data.get('issue_score', 0)
     
-    # Simple heuristic: improvement proportional to how bad the sentence was
-    # and how much of the page it represents (assuming ~10-20 sentences per page)
-    sentence_weight = 1 / 15  # Assume 15 sentences average per page
-    current_gap = 100 - current_score
-    improvement_factor = (70 - issue_score) / 70  # How much improvement this sentence needs
+    # Calculate what's needed to reach 70%
+    target_score = 70
+    gap_to_target = max(0, target_score - current_score)
     
-    # Estimated improvement: sentence weight * improvement factor * remaining gap
-    estimated_improvement = sentence_weight * improvement_factor * current_gap * 0.3
+    # Weight each sentence based on how problematic it is
+    severity_factor = (70 - issue_score) / 70 if issue_score < 70 else 0.1
     
-    return max(0, min(estimated_improvement, 15))  # Cap at 15% improvement per sentence
+    # Distribute the gap across problematic sentences
+    # Ensure that fixing all sentences will reach at least 70%
+    base_improvement = gap_to_target / total_sentences
+    weighted_improvement = base_improvement * (1 + severity_factor)
+    
+    # Add some buffer to ensure we exceed 70%
+    final_improvement = weighted_improvement * 1.2
+    
+    return max(1, min(final_improvement, 25))  # Min 1%, max 25% per sentence
 
 def render_sentence_recommendations(sentences):
     """Render sentence-by-sentence recommendations with score tracking"""
@@ -583,12 +823,12 @@ def render_sentence_recommendations(sentences):
             border_color = "#dc2626"
         
         # Calculate potential improvement for this sentence
-        potential_improvement = calculate_score_improvement(sentence_data, st.session_state.selected_url_info['Compliance Level'])
+        potential_improvement = calculate_score_improvement(sentence_data, st.session_state.selected_url_info['Compliance Level'], len(sentences))
         
         accepted_badge = '✅ ACCEPTED' if is_accepted else ''
         
         # Issue header at the top
-        st.markdown(f"**Issue #{i} - Score: {score}%**")
+        st.markdown(f"**Issue #{i}**")
         st.markdown(f"Potential Improvement: **+{potential_improvement:.1f}%**")
         
         st.markdown(f"""
@@ -706,136 +946,142 @@ def main():
         try:
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                st.image("logos/sailpeak-logo.png", width=150)
+                st.image("logos/sailpeak.png", width=150)
         except:
             st.markdown("**Sailpeak**")
         
-        st.header("Configuration")
+        st.header("Navigation")
         
-        # URL Search
-        st.subheader("URL Search")
-        search_url = st.text_input("Enter URL to search:", placeholder="e.g., belfius.be/nl/particulieren")
+        # Show all pages checkbox
+        show_all_pages = st.checkbox("Show all pages (including compliant)", value=False)
         
-        # Add language and path data
-        enhanced_data = create_hierarchical_filter(st.session_state.belfius_data)
+        st.markdown("---")
         
-        if search_url:
-            # Filter data based on search
-            search_filtered = enhanced_data[enhanced_data['URL'].str.contains(search_url, case=False, na=False)]
-            if len(search_filtered) > 0:
-                st.success(f"Found {len(search_filtered)} matching URLs")
-                enhanced_data = search_filtered
-            else:
-                st.warning("No matching URLs found")
+        # Build hierarchical navigation
+        hierarchy = build_url_hierarchy(st.session_state.belfius_data)
         
-        # Language filter
-        languages = ['All Languages'] + sorted(enhanced_data['Language'].unique().tolist())
-        selected_language = st.selectbox("Language:", languages)
+        # Show breadcrumb if a page is selected
+        render_breadcrumb()
         
-        # Filter by language
-        filtered_data = enhanced_data.copy()
-        if selected_language != 'All Languages':
-            filtered_data = filtered_data[filtered_data['Language'] == selected_language]
+        # Start with root level navigation
+        st.subheader("🏠 belfius.be")
+        st.markdown("""
+        <div style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; 
+                    font-size: 0.75rem; 
+                    color: #666; 
+                    margin-bottom: 1rem;
+                    padding: 0.5rem;
+                    background: #f8f9fa;
+                    border-radius: 4px;">
+        📁 = Folder (click Toggle to expand)<br>
+        📄 = Page file<br>
+        <span style="color: #dc2626;">Red scores = &lt;50%</span><br>
+        <span style="color: #f59e0b;">Yellow scores = 50-69%</span><br>
+        <span style="color: #059669;">Green scores = ≥70%</span>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Page type filter
-        page_types = ['All Types'] + sorted(filtered_data['Page Type'].unique().tolist())
-        selected_page_type = st.selectbox("Page Type:", page_types)
+        # Render navigation tree
+        for idx, (node_name, node_data) in enumerate(sorted(hierarchy.items())):
+            is_last_root = (idx == len(hierarchy) - 1)
+            render_navigation_node(node_name, node_data, show_all=show_all_pages, is_last=is_last_root)
         
-        # Filter by page type
-        if selected_page_type != 'All Types':
-            filtered_data = filtered_data[filtered_data['Page Type'] == selected_page_type]
+        st.markdown("---")
         
-        # Add compliance filter
-        show_all = st.checkbox("Show all pages (including compliant)")
-        
-        # Filter by compliance threshold
-        if not show_all:
-            filtered_data = filtered_data[filtered_data['Compliance Level'] < 70]
-        
-        # URL selection with clean paths
-        if len(filtered_data) > 0:
-            # Create display names with clean paths and scores
-            url_options = []
-            url_data_map = {}
+        # Show selected page info
+        if st.session_state.selected_url_info is not None:
+            st.subheader("Selected Page")
+            render_url_info(st.session_state.selected_url_info)
             
-            for idx, row in filtered_data.iterrows():
-                clean_path = row['URL_Path']
-                score = row['Compliance Level']
-                
-                # Create display string
-                display_name = f"{clean_path} (Score: {score}%)"
-                url_options.append(display_name)
-                url_data_map[display_name] = row
-            
-            # Sort URLs alphabetically
-            url_options = sorted(url_options)
-            
-            selected_url_display = st.selectbox("Select URL:", url_options)
-            selected_url_data = url_data_map[selected_url_display]
-            
-            st.session_state.selected_url_info = selected_url_data
-            
-            # Show URL hierarchy
-            st.markdown(f"""
-            <div class="info">
-                <strong>URL Path:</strong> {selected_url_data['URL_Path']}<br>
-                <strong>Language:</strong> {selected_url_data['Language']}<br>
-                <strong>Type:</strong> {selected_url_data['Page Type']}<br>
-                <strong>Score:</strong> {selected_url_data['Compliance Level']}%
-            </div>
-            """, unsafe_allow_html=True)
-            
+            # Get recommendations button
+            get_recommendations_btn = st.button("🔍 Get Recommendations", type="primary")
         else:
-            st.warning("No pages match the current filters")
-            st.session_state.selected_url_info = None
-        
-        # Get recommendations button
-        get_recommendations_btn = st.button("Get Recommendations", type="primary")
-            
-    # Analysis results
-    if get_recommendations_btn:
-        if not st.session_state.gemini_api_key:
-            st.error("Please provide your Gemini API key in the sidebar")
-        elif st.session_state.selected_url_info is None:
-            st.error("Please select a URL from the sidebar")
-        else:
-            selected_url = st.session_state.selected_url_info['URL']
-            page_score = st.session_state.selected_url_info['Compliance Level']
-            page_type = st.session_state.selected_url_info['Page Type']
-            
-            with st.spinner("Extracting content and analyzing with Gemini AI..."):
-                # Extract text from website
-                progress_bar = st.progress(0)
-                st.write("Extracting website content...")
-                progress_bar.progress(25)
-                
-                extracted_text = extract_clean_text(selected_url)
-                
-                if not extracted_text:
-                    st.error("Could not extract text from the website. Please check the URL.")
-                else:
-                    progress_bar.progress(50)
-                    st.write("Getting sentence-by-sentence recommendations...")
-                    
-                    # Get recommendations with Gemini
-                    recommendations = get_recommendations_with_gemini(
-                        extracted_text, 
-                        selected_url,
-                        page_score,
-                        page_type,
-                        st.session_state.gemini_api_key
-                    )
-                    
-                    progress_bar.progress(100)
-                    
-                    if recommendations:
-                        st.session_state.analyzed_sentences = recommendations
-                        st.success("Analysis complete!")
-                    else:
-                        st.warning("No specific problematic sentences found. The page might already be close to compliance!")
+            st.info("👆 Select a page from the navigation above to get started")
+            get_recommendations_btn = False
     
-    # Render recommendations
-    render_sentence_recommendations(st.session_state.analyzed_sentences)
+    # Main content area
+    if st.session_state.selected_url_info is not None:
+        # Show current page summary
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            score = st.session_state.selected_url_info['Compliance Level']
+            st.metric("Current Score", f"{score}%", delta=None)
+        
+        with col2:
+            estimated_new_score = min(100, score + st.session_state.estimated_score_gain)
+            st.metric("Estimated New Score", f"{estimated_new_score:.1f}%", 
+                     delta=f"+{st.session_state.estimated_score_gain:.1f}%" if st.session_state.estimated_score_gain > 0 else None)
+        
+        with col3:
+            compliance_status = "✅ Compliant" if estimated_new_score >= 70 else "❌ Non-Compliant"
+            st.metric("Compliance Status", compliance_status)
+        
+        # Analysis results
+        if get_recommendations_btn:
+            if not st.session_state.gemini_api_key:
+                st.error("Please provide your Gemini API key in the sidebar")
+            else:
+                selected_url = st.session_state.selected_url_info['URL']
+                page_score = st.session_state.selected_url_info['Compliance Level']
+                page_type = st.session_state.selected_url_info['Page Type']
+                
+                with st.spinner("Extracting content and analyzing with Gemini AI..."):
+                    # Extract text from website
+                    progress_bar = st.progress(0)
+                    st.write("Extracting website content...")
+                    progress_bar.progress(25)
+                    
+                    extracted_text = extract_clean_text(selected_url)
+                    
+                    if not extracted_text:
+                        st.error("Could not extract text from the website. Please check the URL.")
+                    else:
+                        progress_bar.progress(50)
+                        st.write("Getting sentence-by-sentence recommendations...")
+                        
+                        # Get recommendations with Gemini
+                        recommendations = get_recommendations_with_gemini(
+                            extracted_text, 
+                            selected_url,
+                            page_score,
+                            page_type,
+                            st.session_state.gemini_api_key
+                        )
+                        
+                        progress_bar.progress(100)
+                        
+                        if recommendations:
+                            st.session_state.analyzed_sentences = recommendations
+                            # Reset improvements when new analysis is done
+                            st.session_state.accepted_improvements = set()
+                            st.session_state.estimated_score_gain = 0
+                            st.success("Analysis complete!")
+                        else:
+                            st.warning("No specific problematic sentences found. The page might already be close to compliance!")
+        
+        # Render recommendations
+        render_sentence_recommendations(st.session_state.analyzed_sentences)
+    
+    else:
+        # Welcome screen when no page is selected
+        st.markdown("""
+        ## Welcome to the CEFR B2 Compliance Tool
+        
+        This tool helps you improve banking website content to meet CEFR B2 accessibility standards under the European Accessibility Act.
+        
+        ### How to get started:
+        1. **Navigate** through the Belfius website structure in the sidebar
+        2. **Select** a page by clicking on it (pages show compliance scores with 🔴🟡🟢 indicators)
+        3. **Analyze** the page content with AI-powered recommendations
+        4. **Accept** improvements to boost compliance scores
+        
+        ### Features:
+        - 🎯 **Sentence-level analysis** for precise improvements
+        - 📊 **Real-time score tracking** with estimated improvements
+        - 🌐 **Multi-language support** (Dutch, French, English)
+        - 🏦 **Banking-specific** terminology and context awareness
+        """)
 
     # Footer
     st.markdown("---")
