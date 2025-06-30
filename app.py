@@ -1,12 +1,5 @@
 import streamlit as st
 import google.generativeai as genai
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
-import threading
 import time
 import re
 import json
@@ -16,6 +9,10 @@ import html
 from functools import lru_cache
 import logging
 import matplotlib.pyplot as plt
+import requests  # ADD this
+from requests.adapters import HTTPAdapter  # ADD this
+from urllib3.util.retry import Retry  # ADD this
+from bs4 import BeautifulSoup
 
 # Configure page
 st.set_page_config(
@@ -238,74 +235,6 @@ def image_to_base64(path):
 logo_left = image_to_base64("logos/belfius-logo.png")
 logo_right = image_to_base64("logos/sailpeak.png")
 
-# Thread-local storage for WebDriver instances
-thread_local = threading.local()
-
-def get_driver():
-    """Get a WebDriver instance for the current thread"""
-    if not hasattr(thread_local, 'driver'):
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--disable-images')
-        options.add_argument('--disable-javascript')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--remote-debugging-port=9222')
-        options.add_argument('--disable-extensions')
-        options.add_argument('--disable-plugins')
-        options.add_argument('--disable-web-security')
-        options.add_argument('--allow-running-insecure-content')
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
-        
-        try:
-            # Try different Chrome binary locations for cloud deployment
-            import platform
-            if platform.system() == 'Linux':
-                # Common paths for Chromium on Linux systems
-                possible_paths = [
-                    '/usr/bin/chromium',
-                    '/usr/bin/chromium-browser',
-                    '/usr/bin/google-chrome',
-                    '/usr/bin/google-chrome-stable'
-                ]
-                
-                for path in possible_paths:
-                    if os.path.exists(path):
-                        options.binary_location = path
-                        break
-            
-            # Use webdriver-manager with fallback
-            from webdriver_manager.chrome import ChromeDriverManager
-            from selenium.webdriver.chrome.service import Service
-            
-            try:
-                service = Service(ChromeDriverManager().install())
-                thread_local.driver = webdriver.Chrome(service=service, options=options)
-            except Exception as e:
-                st.error(f"ChromeDriverManager failed: {e}")
-                # Fallback to system chromedriver
-                thread_local.driver = webdriver.Chrome(options=options)
-                
-        except Exception as e:
-            st.error(f"Could not initialize Chrome driver: {e}")
-            return None
-            
-        thread_local.driver.set_page_load_timeout(30)
-        thread_local.driver.implicitly_wait(5)
-    
-    return thread_local.driver
-    
-def cleanup_driver():
-    """Clean up the WebDriver for the current thread"""
-    if hasattr(thread_local, 'driver'):
-        thread_local.driver.quit()
-        del thread_local.driver
-
 @st.cache_data
 def load_belfius_data():
     """Load Belfius URL data from Excel file"""
@@ -317,51 +246,82 @@ def load_belfius_data():
         return None
 
 def extract_clean_text(url):
-    """Optimized text extraction for banking websites"""
+    """Extract text using requests + BeautifulSoup (cloud-friendly)"""
     try:
-        driver = get_driver()
-        driver.get(url)
+        # Set up session with retries and proper headers
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         
-        try:
-            WebDriverWait(driver, 8).until(EC.presence_of_element_located((By.TAG_NAME, "main")))
-        except:
-            time.sleep(2)
+        # Headers to mimic a real browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
         
-        # Handle cookie banners
-        try:
-            cookie_selectors = ['[data-testid*="accept"]', '[class*="accept"]', '[id*="accept"]']
-            for selector in cookie_selectors:
-                buttons = driver.find_elements(By.CSS_SELECTOR, selector)
-                for button in buttons[:1]:
-                    if button.is_displayed():
-                        driver.execute_script("arguments[0].click();", button)
-                        time.sleep(1)
-                        break
-                if buttons:
-                    break
-        except:
-            pass
+        # Make request with timeout
+        st.write(f"Fetching content from: {url}")
+        response = session.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
         
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        # Parse with BeautifulSoup
+        soup = BeautifulSoup(response.content, 'html.parser')
         
-        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+        # Remove unwanted elements
+        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'noscript']):
             if tag:
                 tag.decompose()
         
-        main_content = soup.find('main') or soup.find('article') or soup.find('.content')
+        # Try to find main content areas first
+        main_content = None
+        content_selectors = [
+            'main', 
+            'article', 
+            '[role="main"]',
+            '.content', 
+            '.main-content',
+            '.page-content',
+            '#content',
+            '#main',
+            '.container'
+        ]
+        
+        for selector in content_selectors:
+            main_content = soup.select_one(selector)
+            if main_content:
+                st.write(f"Found content using selector: {selector}")
+                break
+        
+        # Extract text from main content or full page
         if main_content:
             text = main_content.get_text(separator=' ', strip=True)
         else:
             text = soup.get_text(separator=' ', strip=True)
+            st.write("Using full page content (no main content area found)")
         
         if text and len(text.strip()) > 100:
             cleaned_text = clean_bank_text(text)
+            st.write(f"Extracted {len(cleaned_text)} characters of text")
             return cleaned_text[:15000]
         else:
+            st.warning("Not enough text found on the page")
             return ""
-
+            
+    except requests.RequestException as e:
+        st.error(f"Network error accessing {url}: {str(e)}")
+        return ""
     except Exception as e:
-        st.error(f"Error extracting text: {str(e)}")
+        st.error(f"Error extracting text from {url}: {str(e)}")
         return ""
 
 def clean_bank_text(raw_text):
