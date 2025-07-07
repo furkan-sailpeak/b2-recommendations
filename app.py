@@ -73,61 +73,69 @@ st.markdown("""
         width: auto;
     }
     
-    /* Hierarchical navigation styles */
-    .nav-item {
-        margin: 0.25rem 0;
-        padding: 0.5rem 0.75rem;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        border-left: 3px solid transparent;
-        font-size: 0.9rem;
-    }
-    
-    .nav-item:hover {
-        background: #f1f5f9;
-        border-left-color: #EBD37F;
-    }
-    
-    .nav-item.active {
-        background: #EBD37F;
-        border-left-color: #d4c46a;
-        font-weight: 600;
-    }
-    
-    .nav-item.has-children {
-        font-weight: 500;
-    }
-    
-    .nav-item.leaf {
-        color: #059669;
-        font-size: 0.85rem;
-    }
-    
-    .nav-item.leaf.selected {
-        background: #d1fae5;
-        border-left-color: #059669;
-        font-weight: 600;
-    }
-    
-    .nav-children {
-        margin-left: 1rem;
-        padding-left: 0.5rem;
-        border-left: 1px solid #e2e8f0;
-    }
-    
-    .breadcrumb {
-        background: #f8fafc;
+    /* Simple URL list styling */
+    .url-item {
+        margin: 0.5rem 0;
         padding: 0.75rem;
         border-radius: 6px;
-        margin-bottom: 1rem;
-        font-size: 0.85rem;
-        color: #64748b;
+        border: 1px solid #e2e8f0;
+        background: white;
+        transition: all 0.2s ease;
     }
     
-    .breadcrumb .current {
+    .url-item:hover {
+        background: #f8fafc;
+        border-color: #EBD37F;
+    }
+    
+    .url-item.selected {
+        background: #EBD37F;
+        border-color: #d4c46a;
         font-weight: 600;
+    }
+    
+    .url-score {
+        font-weight: 600;
+        float: right;
+        margin-left: 1rem;
+    }
+    
+    .score-good { color: #059669; }
+    .score-warning { color: #f59e0b; }
+    .score-danger { color: #dc2626; }
+    
+    .url-title {
+        font-size: 0.9rem;
         color: #1e293b;
+        margin-bottom: 0.25rem;
+    }
+    
+    .url-path {
+        font-size: 0.75rem;
+        color: #64748b;
+        font-family: monospace;
+    }
+    
+    /* Current URL display */
+    .current-url {
+        background: #f8fafc;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        border-left: 4px solid #EBD37F;
+    }
+    
+    .current-url h3 {
+        margin: 0 0 0.5rem 0;
+        color: #1e293b;
+        font-size: 1.1rem;
+    }
+    
+    .current-url .url-text {
+        font-family: monospace;
+        color: #059669;
+        font-size: 0.9rem;
+        word-break: break-all;
     }
     
     /* Score display */
@@ -138,10 +146,6 @@ st.markdown("""
         padding: 1rem;
         margin: 1rem 0;
     }
-    
-    .score-good { color: #059669; }
-    .score-warning { color: #d97706; }
-    .score-danger { color: #dc2626; }
     
     /* Simple sentence cards */
     .sentence {
@@ -175,6 +179,25 @@ st.markdown("""
         color: #000000 !important;
     }
     
+    /* Chat interface styling */
+    .chat-message {
+        padding: 0.75rem;
+        margin: 0.5rem 0;
+        border-radius: 8px;
+        border-left: 3px solid #3b82f6;
+        background: #f8fafc;
+    }
+
+    .chat-user {
+        background: #eff6ff;
+        border-left-color: #3b82f6;
+    }
+
+    .chat-assistant {
+        background: #f0fdf4;
+        border-left-color: #059669;
+    }
+            
     .analysis-scores {
         background: #f8fafc;
         padding: 1rem;
@@ -265,6 +288,20 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
 </style>
+<script>
+function copyToClipboard(text, buttonId) {
+    navigator.clipboard.writeText(text).then(function() {
+        const button = document.getElementById(buttonId);
+        const originalText = button.innerHTML;
+        button.innerHTML = '✅ Copied!';
+        button.style.background = '#059669';
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.style.background = '#EBD37F';
+        }, 2000);
+    });
+}
+</script>
 """, unsafe_allow_html=True)
 
 # Initialize session state
@@ -275,232 +312,159 @@ if 'selected_url_score' not in st.session_state:
 if 'selected_url_info' not in st.session_state:
     st.session_state.selected_url_info = None
 if 'gemini_api_key' not in st.session_state:
-    st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
-if 'belfius_data' not in st.session_state:
-    st.session_state.belfius_data = None
+   st.session_state.gemini_api_key = "AIzaSyBzOT2O03scMENbdWouWexYa10v4K4OVPE"
+if 'crelan_data' not in st.session_state:
+    st.session_state.crelan_data = None
 if 'current_page_score' not in st.session_state:
     st.session_state.current_page_score = 0
 if 'accepted_improvements' not in st.session_state:
     st.session_state.accepted_improvements = set()
 if 'estimated_score_gain' not in st.session_state:
     st.session_state.estimated_score_gain = 0
-if 'navigation_path' not in st.session_state:
-    st.session_state.navigation_path = []
-if 'expanded_nodes' not in st.session_state:
-    st.session_state.expanded_nodes = set()
+if 'chat_mode' not in st.session_state:
+    st.session_state.chat_mode = {}
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = {}
 
 def image_to_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-logo_left = image_to_base64("logos/belfius-logo.png")
+logo_left = image_to_base64("logos/crelan-logo.png")
 logo_right = image_to_base64("logos/sailpeak.png")
 
 @st.cache_data
-def load_belfius_data():
-    """Load Belfius URL data from Excel file"""
+def load_crelan_data():
+    """Load Crelan URL data from Excel file"""
     try:
-        df = pd.read_excel('data/belfius_b2_accessibility_final.xlsx', sheet_name='Sheet1')
+        df = pd.read_excel('data/crelan_b2_final_results.xlsx', sheet_name='Sheet1')
         return df
     except Exception as e:
         st.error(f"Could not load data file: {e}")
         return None
 
-def build_url_hierarchy(data):
-    """Build hierarchical structure from URLs"""
-    hierarchy = {}
-    
-    for idx, row in data.iterrows():
-        url = row['URL']
+def extract_page_name_from_url(url):
+    """Extract a readable page name from URL"""
+    try:
+        # Remove protocol and domain
+        if 'crelan.be' in url:
+            path = url.split('crelan.be')[-1]
+        else:
+            path = url
         
-        # Clean up URL and extract path
-        if 'belfius.be' in url:
-            path_part = url.split('belfius.be')[-1]
-            if path_part.startswith('/'):
-                path_part = path_part[1:]
-            
-            # Remove file extensions and query parameters
-            path_part = re.sub(r'\.(aspx|html).*$', '', path_part)
-            path_part = path_part.rstrip('/')
-            
-            if not path_part:
-                path_part = 'home'
-            
-            # Split path into components
-            path_components = path_part.split('/')
-            
-            # Build hierarchy
-            current_level = hierarchy
-            full_path = []
-            
-            for component in path_components:
-                full_path.append(component)
-                path_key = '/'.join(full_path)
-                
-                if component not in current_level:
-                    current_level[component] = {
-                        '_children': {},
-                        '_data': None,
-                        '_path': path_key
-                    }
-                
-                # If this is the last component, store the data
-                if component == path_components[-1]:
-                    current_level[component]['_data'] = row
-                
-                current_level = current_level[component]['_children']
-    
-    return hierarchy
+        # Remove leading slash
+        if path.startswith('/'):
+            path = path[1:]
+        
+        # Remove file extensions and parameters
+        path = re.sub(r'\.(aspx|html).*$', '', path)
+        path = path.rstrip('/')
+        
+        if not path or path == '':
+            return "Home"
+        
+        # Split by slashes and take the last meaningful part
+        parts = [p for p in path.split('/') if p]
+        if parts:
+            # Clean up the last part for display
+            name = parts[-1].replace('-', ' ').replace('_', ' ')
+            # Capitalize words
+            name = ' '.join(word.capitalize() for word in name.split())
+            return name
+        
+        return "Page"
+    except:
+        return "Unknown Page"
 
-def render_navigation_node(node_name, node_data, level=0, parent_path="", show_all=False, is_last=True, prefix=""):
-    """Render a single navigation node in repository-style format with proper tree structure"""
-    current_path = f"{parent_path}/{node_name}" if parent_path else node_name
-    has_children = len(node_data['_children']) > 0
-    has_data = node_data['_data'] is not None
+def render_simple_url_dropdown(data, show_all=False):
+    """Render a simple dropdown for URL selection"""
+    st.subheader("📄 Select a Page")
     
-    # Check if this node or its children have non-compliant pages
-    def has_non_compliant_pages(node):
-        if node['_data'] is not None:
-            return node['_data']['Compliance Level'] < 70
-        for child in node['_children'].values():
-            if has_non_compliant_pages(child):
-                return True
-        return False
+    filtered_data = data[data['Compliance Level'] < 70]
     
-    # Skip this node if it has no non-compliant pages and show_all is False
-    if not show_all and not has_non_compliant_pages(node_data):
+    if filtered_data.empty:
+        if not show_all:
+            st.info("No non-compliant pages found. Enable 'Show all pages' to see compliant pages too.")
+        else:
+            st.info("No pages found in the dataset.")
         return
     
-    # Create unique key for this node
-    node_key = f"nav_{current_path}_{level}"
+    st.write(f"Found {len(filtered_data)} pages")
     
-    # Tree structure symbols
-    if level == 0:
-        tree_symbol = ""
-        new_prefix = ""
-    else:
-        tree_symbol = "└── " if is_last else "├── "
-        new_prefix = prefix + ("    " if is_last else "│   ")
+    # Sort by compliance score (worst first)
+    sorted_data = filtered_data.sort_values('Compliance Level')
     
-    # Determine node styling
-    if has_data and not has_children:
-        # Leaf node (file) - use document icon
-        score = node_data['_data']['Compliance Level']
+    # Create options for dropdown
+    options = []
+    option_data = {}
+    
+    # Add a default "None selected" option
+    options.append("-- Select a page --")
+    
+    for idx, row in sorted_data.iterrows():
+        score = row['Compliance Level']
+        url = row['URL']
+        page_type = row['Page Type']
         
-        # Skip compliant pages unless show_all is True
-        if not show_all and score >= 70:
-            return
-        
-        # File icon with status
-        if score < 50:
-            file_icon = "📄"
-            status_color = "#dc2626"  # Red
-        elif score < 70:
-            file_icon = "📄"
-            status_color = "#f59e0b"  # Yellow
+        # Create clean URL display
+        if 'crelan.be' in url:
+            url_display = url.split('crelan.be')[-1]
+            if not url_display or url_display == '/':
+                url_display = '/home'
         else:
-            file_icon = "📄"
-            status_color = "#059669"  # Green
+            url_display = url
         
-        display_text = f"{prefix}{tree_symbol}{file_icon} {node_name}"
-        score_text = f"({score}%)"
-        
-        # Custom styling for repository look with proper selection highlighting
-        is_selected = (st.session_state.selected_url_info is not None and 
-                      node_data['_data']['URL'] == st.session_state.selected_url_info['URL'])
-        
-        st.markdown(f"""
-        <div style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; 
-                    font-size: 0.8rem; 
-                    padding: 0.2rem 0.5rem; 
-                    margin: 0.05rem 0;
-                    background: {'#e3f2fd' if is_selected else 'transparent'};
-                    border-radius: 3px;
-                    border-left: 3px solid {'#1976d2' if is_selected else 'transparent'};
-                    white-space: pre;">
-            <span style="color: #666;">{display_text}</span>
-            <span style="color: {status_color}; font-weight: 600; margin-left: 8px;">{score_text}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if st.button("Select", key=node_key, help=f"Score: {score}%"):
-            st.session_state.selected_url_info = node_data['_data']
-            st.session_state.navigation_path = current_path.split('/')
-            st.rerun()
-            
-    elif has_children:
-        # Parent node (folder) - use folder icon
-        is_expanded = current_path in st.session_state.expanded_nodes
-        
-        # Folder icon with expand/collapse state
-        if level == 0:
-            folder_icon = "🏠" if node_name == "home" else "📂"
-            display_text = f"{folder_icon} {node_name}/"
+        # Determine score icon
+        if score >= 70:
+            score_icon = "🟢"
+        elif score >= 50:
+            score_icon = "🟡"
         else:
-            folder_icon = "📂" if is_expanded else "📁"
-            display_text = f"{prefix}{tree_symbol}{folder_icon} {node_name}/"
+            score_icon = "🔴"
         
-        # Repository-style folder display
-        st.markdown(f"""
-        <div style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; 
-                    font-size: 0.8rem; 
-                    padding: 0.2rem 0.5rem; 
-                    margin: 0.05rem 0;
-                    font-weight: 600;
-                    color: #1976d2;
-                    white-space: pre;">
-            {display_text}
-        </div>
-        """, unsafe_allow_html=True)
+        # Create dropdown option text with URL
+        option_text = f"{score_icon} {url_display} ({score}%)"
+        options.append(option_text)
+        option_data[option_text] = row
+    
+    # Find current selection index
+    current_index = 0
+    if st.session_state.selected_url_info is not None:
+        current_url = st.session_state.selected_url_info['URL']
+        for i, (option_text, row_data) in enumerate(option_data.items(), 1):
+            if row_data['URL'] == current_url:
+                current_index = i
+                break
+    
+    # Render dropdown
+    selected_option = st.selectbox(
+        "Choose a page to analyze:",
+        options,
+        index=current_index,
+        key="page_selector"
+    )
+    
+    # Handle selection
+    if selected_option != "-- Select a page --" and selected_option in option_data:
+        new_selection = option_data[selected_option]
         
-        if st.button("Toggle", key=node_key):
-            if is_expanded:
-                st.session_state.expanded_nodes.discard(current_path)
-            else:
-                st.session_state.expanded_nodes.add(current_path)
+        # Check if this is a different selection
+        if (st.session_state.selected_url_info is None or 
+            st.session_state.selected_url_info['URL'] != new_selection['URL']):
+            
+            st.session_state.selected_url_info = new_selection
+            # Reset analysis when selecting new URL
+            st.session_state.analyzed_sentences = []
+            st.session_state.accepted_improvements = set()
+            st.session_state.estimated_score_gain = 0
             st.rerun()
-        
-        # Show children if expanded
-        if is_expanded:
-            # Sort children: folders first, then files
-            folders = [(name, data) for name, data in node_data['_children'].items() if len(data['_children']) > 0]
-            files = [(name, data) for name, data in node_data['_children'].items() if len(data['_children']) == 0]
-            all_children = sorted(folders) + sorted(files)
-            
-            # Filter children based on show_all setting
-            visible_children = []
-            for child_name, child_data in all_children:
-                def has_non_compliant_pages_recursive(node):
-                    if node['_data'] is not None:
-                        return node['_data']['Compliance Level'] < 70
-                    for child in node['_children'].values():
-                        if has_non_compliant_pages_recursive(child):
-                            return True
-                    return False
-                
-                if show_all or has_non_compliant_pages_recursive(child_data):
-                    visible_children.append((child_name, child_data))
-            
-            for idx, (child_name, child_data) in enumerate(visible_children):
-                is_last_child = (idx == len(visible_children) - 1)
-                render_navigation_node(child_name, child_data, level + 1, current_path, show_all, is_last_child, new_prefix)
-
-def render_breadcrumb():
-    """Render breadcrumb navigation"""
-    if st.session_state.navigation_path:
-        breadcrumb_items = []
-        for i, item in enumerate(st.session_state.navigation_path):
-            if i == len(st.session_state.navigation_path) - 1:
-                breadcrumb_items.append(f'<span class="current">{item}</span>')
-            else:
-                breadcrumb_items.append(item)
-        
-        breadcrumb_text = " → ".join(breadcrumb_items)
-        st.markdown(f"""
-        <div class="breadcrumb">
-            <strong>Current Path:</strong> belfius.be → {breadcrumb_text}
-        </div>
-        """, unsafe_allow_html=True)
+    elif selected_option == "-- Select a page --":
+        if st.session_state.selected_url_info is not None:
+            st.session_state.selected_url_info = None
+            st.session_state.analyzed_sentences = []
+            st.session_state.accepted_improvements = set()
+            st.session_state.estimated_score_gain = 0
+            st.rerun()
 
 def extract_clean_text(url):
     """Extract text using requests + BeautifulSoup (cloud-friendly)"""
@@ -582,32 +546,138 @@ def extract_clean_text(url):
         return ""
 
 def clean_bank_text(raw_text):
-    """Clean banking website text"""
+    """Enhanced cleaning for banking website text"""
     if not raw_text or len(raw_text.strip()) < 20:
         return ""
     
     patterns_to_remove = [
+        # Language switchers and navigation
         r'FR\s+NL\s+EN',
         r'Nederlands\s+Français\s+English',
+        r'Taal\s*:\s*(Nederlands|Français|English)',
         r'Home.*?Contact.*?Login',
+        r'Home\s*›\s*.*?›.*?›',
+        r'Hoofdmenu\s+Sluiten',
+        r'Menu\s+principal\s+Fermer',
         r'Menu\s+Sluiten',
+        
+        # Banking navigation menus
+        r'Particulieren\s+Ondernemingen\s+Private\s+Banking',
+        r'Particuliers\s+Entreprises\s+Private\s+Banking',
+        r'Sparen\s+Beleggen\s+Lenen\s+Verzekeringen',
+        r'Épargner\s+Investir\s+Emprunter\s+Assurances',
+        r'Mijn\s+Crelan\s+.*?Online\s+Banking',
+        r'Inloggen\s+Registreren',
+        r'Se\s+connecter\s+S\'inscrire',
+        
+        # Cookie and privacy
         r'Cookie.*?Accept.*?Manage',
         r'Accept all cookies.*?Manage cookies',
         r'Deze website gebruikt cookies.*?Alles accepteren',
+        r'Ce\s+site\s+web\s+utilise\s+des\s+cookies.*?Tout\s+accepter',
+        r'This\s+website\s+uses\s+cookies.*?Accept\s+all',
+        r'Cookiebeleid.*?Privacy.*?Algemene\s+voorwaarden',
+        r'Politique\s+des\s+cookies.*?Confidentialité',
+        
+        # Social media and sharing
         r'Share on.*?Facebook',
         r'Tweet.*?Twitter',
-        r'Home\s*›.*?›',
+        r'Deel\s+op\s+Facebook.*?Twitter.*?LinkedIn',
+        r'Partager\s+sur\s+Facebook.*?Twitter',
+        r'Volg\s+ons\s+op.*?(?:Facebook|Twitter|Instagram)',
+        r'Suivez-nous\s+sur.*?(?:Facebook|Twitter)',
+        r'Follow\s+us\s+on.*?(?:Facebook|Twitter)',
+        
+        # Call-to-action and promotional
         r'Lees meer\s*',
         r'Lire la suite\s*',
         r'Read more\s*',
+        r'Meer\s+info\s*(?:rmatie)?\s*(?:aanvragen)?',
+        r'Plus\s+d\'(?:info|information)s?\s*',
+        r'More\s+info(?:rmation)?\s*',
+        r'Aanvragen\s+online',
+        r'Demander\s+en\s+ligne',
+        r'Apply\s+online',
+        r'Klik\s+hier',
+        r'Cliquez\s+ici',
+        r'Click\s+here',
+        r'Bekijk\s+hier',
+        r'Voir\s+ici',
+        r'View\s+here',
+        
+        # Legal and footer
+        r'©\s*\d{4}.*?Crelan.*?(?:Alle\s+rechten\s+voorbehouden|Tous\s+droits\s+réservés)',
+        r'Copyright\s*©?\s*\d{4}.*?(?:Crelan|Bank)',
+        r'Alle\s+rechten\s+voorbehouden.*?\d{4}',
+        r'Tous\s+droits\s+réservés.*?\d{4}',
+        r'Algemene\s+voorwaarden.*?Privacy.*?Cookiebeleid',
+        r'Conditions\s+générales.*?Confidentialité.*?Cookies',
+        r'Wettelijke\s+informatie.*?Klachten.*?Contact',
+        r'Informations\s+légales.*?Réclamations',
+        
+        # Regulatory and banking codes
+        r'FSMA.*?(?:Vergunning|Autorisation).*?\d+',
+        r'BNB.*?(?:Toezicht|Supervision)',
+        r'Depositogarantie.*?(?:Bescherming|Protection)',
+        r'Garantie\s+des\s+dépôts.*?Protection',
+        
+        # Technical elements
+        r'Vul\s+(?:dit|alle)\s+veld(?:en)?\s+in',
+        r'Remplissez\s+ce(?:s)?\s+champ(?:s)?',
+        r'Fill\s+(?:in\s+)?this\s+field',
+        r'Verplicht\s+veld',
+        r'Champ\s+obligatoire',
+        r'Required\s+field',
+        r'Er\s+is\s+een\s+fout\s+opgetreden',
+        r'Une\s+erreur\s+s\'est\s+produite',
+        r'An\s+error\s+occurred',
+        
+        # Search and form elements
+        r'Zoeken\s+in\s+site',
+        r'Rechercher\s+sur\s+le\s+site',
+        r'Search\s+site',
     ]
     
     cleaned = raw_text
     for pattern in patterns_to_remove:
         cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE | re.DOTALL)
     
+    # Remove URLs
+    cleaned = re.sub(r'https?://[^\s]+', '', cleaned)
+    
+    # Remove email addresses and phone numbers
+    cleaned = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', cleaned)
+    cleaned = re.sub(r'\b(?:\+32\s*)?[0-9\s\-\(\)]{8,}\b', '', cleaned)
+    
+    # Remove reference codes and standalone numbers
+    cleaned = re.sub(r'\b[A-Z]{2,4}\d{2,6}\b', '', cleaned)
+    cleaned = re.sub(r'\b\d{1,2}\s*(?:\.|:|\))\s*(?=\s|$)', '', cleaned)
+    
+    # Remove orphaned currency symbols
+    cleaned = re.sub(r'[€$£]\s*(?=\s|$)', '', cleaned)
+    
+    # Clean up whitespace and punctuation
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = re.sub(r'\.{2,}', '.', cleaned)
+    cleaned = re.sub(r'\,{2,}', ',', cleaned)
+    
+    # Remove very short fragments (less than 10 chars or just numbers/symbols)
+    sentences = cleaned.split('.')
+    meaningful_sentences = []
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if (len(sentence) > 10 and 
+            not re.match(r'^[0-9\s\-\(\)\+€$£%.,;:]+$', sentence) and
+            len(sentence.split()) >= 3):
+            meaningful_sentences.append(sentence)
+    
+    cleaned = '. '.join(meaningful_sentences)
+    
+    # Final cleanup
+    cleaned = re.sub(r'^\s+|\s+$', '', cleaned)
+    if cleaned and not cleaned.endswith('.'):
+        cleaned += '.'
     
     return cleaned.strip()
 
@@ -623,7 +693,7 @@ def detect_language_from_url(url):
     return 'Dutch (NL)'
 
 def get_recommendations_with_gemini(text, url, page_score, page_type, api_key):
-    """Get sentence-by-sentence recommendations using Gemini API"""
+    """Get section-by-section recommendations with Sailpeak AI Lab"""
     if not api_key:
         st.error("Please provide your Gemini API key in the sidebar")
         return []
@@ -642,7 +712,7 @@ def get_recommendations_with_gemini(text, url, page_score, page_type, api_key):
         - Page type: {page_type}
         - Language: {language}
         - Current compliance score: {page_score}%
-        - Industry: Banking (Belfius)
+        - Industry: Banking (Crelan)
         - Target: General public including non-native speakers
         
         **CEFR B2 Evaluation Criteria:**
@@ -739,38 +809,6 @@ def get_recommendations_with_gemini(text, url, page_score, page_type, api_key):
         st.error(f"Error with Gemini API: {str(e)}")
         return []
 
-def render_url_info(url_info):
-    """Render URL information from the database"""
-    if url_info is None or url_info.empty:
-        return
-    
-    score = url_info['Compliance Level']
-    page_type = url_info['Page Type']
-    
-    # Score styling
-    if score >= 70:
-        score_class = "score-good"
-        status = "✅ Compliant"
-    elif score >= 50:
-        score_class = "score-warning"
-        status = "⚠️ Needs Improvement"
-    else:
-        score_class = "score-danger"
-        status = "❌ Non-Compliant"
-    
-    st.markdown(f"""
-    <div class="score {score_class}">
-        {score}%<br>
-        <small>{status}</small>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown(f"""
-    <div class="info">
-        <strong>Page Type:</strong> {page_type}
-    </div>
-    """, unsafe_allow_html=True)
-
 def calculate_score_improvement(sentence_data, current_score, total_sentences):
     """Calculate estimated score improvement from fixing a sentence"""
     issue_score = sentence_data.get('issue_score', 0)
@@ -793,150 +831,257 @@ def calculate_score_improvement(sentence_data, current_score, total_sentences):
     return max(1, min(final_improvement, 25))  # Min 1%, max 25% per sentence
 
 def render_sentence_recommendations(sentences):
-    """Render sentence-by-sentence recommendations with score tracking"""
-    if not sentences:
-        st.info("No problematic sentences identified yet. Click 'Get Recommendations' to analyze the page content.")
-        return
-    
-    st.markdown("---")
-    st.subheader("Sentence-by-Sentence Recommendations")
-    
-    pending_count = len([s for i, s in enumerate(sentences, 1) if i not in st.session_state.accepted_improvements])
-    accepted_count = len(st.session_state.accepted_improvements)
-    
-    st.write(f"**Progress:** {accepted_count} accepted, {pending_count} pending ({len(sentences)} total)")
-    
-    for i, sentence_data in enumerate(sentences, 1):
-        score = sentence_data.get('issue_score', 0)
-        issues = sentence_data.get('issues', [])
-        is_accepted = i in st.session_state.accepted_improvements
-        
-        # Determine card style based on score and acceptance status
-        if is_accepted:
-            card_class = "sentence-accepted"
-            border_color = "#059669"
-        elif score >= 60:
-            card_class = "sentence-warning"
-            border_color = "#f59e0b"
-        else:
-            card_class = "sentence-critical"
-            border_color = "#dc2626"
-        
-        # Calculate potential improvement for this sentence
-        potential_improvement = calculate_score_improvement(sentence_data, st.session_state.selected_url_info['Compliance Level'], len(sentences))
-        
-        accepted_badge = '✅ ACCEPTED' if is_accepted else ''
-        
-        # Issue header at the top
-        st.markdown(f"**Issue #{i}**")
-        st.markdown(f"Potential Improvement: **+{potential_improvement:.1f}%**")
-        
-        st.markdown(f"""
-            <div style="background: #fef3c7; padding: 1rem; border-radius: 4px; border-left: 3px solid #f59e0b; margin: 1rem 0; {'opacity: 0.7;' if is_accepted else ''}">
-                <strong style="color: #000000;">Original sentence:</strong><br>
-                <span style="color: #000000; font-style: italic;">"{sentence_data.get('sentence', '')}"</span>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Smart issue badge mapping (only show if not accepted)
-        if issues and not is_accepted:
-            issue_badges = ""
-            for issue in issues:
-                issue_clean = issue.lower().replace(' ', '').replace('banking', '').replace('complex', 'complexity')
-                if 'jargon' in issue_clean or 'technical' in issue_clean:
-                    badge_class = "badge-jargon"
-                elif 'length' in issue_clean or 'long' in issue_clean:
-                    badge_class = "badge-length"
-                elif 'passive' in issue_clean:
-                    badge_class = "badge-passive"
-                elif 'readability' in issue_clean or 'clarity' in issue_clean:
-                    badge_class = "badge-readability"
-                elif 'grammar' in issue_clean:
-                    badge_class = "badge-grammar"
-                else:
-                    badge_class = "badge-complexity"
+   """Render section-by-section recommendations with score tracking"""
+   if not sentences:
+       st.info("No problematic sections identified yet. Click 'Get Recommendations' to analyze the page content.")
+       return
+   
+   st.markdown("---")
+   st.markdown("## Section-by-Section Recommendations")
+   
+   pending_count = len([s for i, s in enumerate(sentences, 1) if i not in st.session_state.accepted_improvements])
+   accepted_count = len(st.session_state.accepted_improvements)
+   
+   st.write(f"**Progress:** {accepted_count} accepted, {pending_count} pending ({len(sentences)} total)")
+
+   st.markdown("---")
+   
+   for i, sentence_data in enumerate(sentences, 1):
+       score = sentence_data.get('issue_score', 0)
+       issues = sentence_data.get('issues', [])
+       is_accepted = i in st.session_state.accepted_improvements
+       
+       # Determine card style based on score and acceptance status
+       if is_accepted:
+           card_class = "sentence-accepted"
+           border_color = "#059669"
+       elif score >= 60:
+           card_class = "sentence-warning"
+           border_color = "#f59e0b"
+       else:
+           card_class = "sentence-critical"
+           border_color = "#dc2626"
+       
+       # Calculate potential improvement for this sentence
+       potential_improvement = calculate_score_improvement(sentence_data, st.session_state.selected_url_info['Compliance Level'], len(sentences))
+       
+       # Issue header at the top
+       st.markdown(f"<h3 style='font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 1.5rem 0 0.5rem 0; border-bottom: 2px solid #EBD37F; padding-bottom: 0.3rem; display: inline-block;'>Issue #{i}</h3>", unsafe_allow_html=True)
+       st.markdown(f"<p style='font-size: 1.1rem; font-weight: 600; color: #059669; margin: 0.5rem 0 1rem 0;'>Potential Improvement: <strong>+{potential_improvement:.1f}%</strong></p>", unsafe_allow_html=True)
+       
+       st.markdown(f"""
+           <div style="background: #fef3c7; padding: 1rem; border-radius: 4px; border-left: 3px solid #f59e0b; margin: 1rem 0; {'opacity: 0.7;' if is_accepted else ''}">
+               <strong style="color: #000000;">Original section:</strong><br>
+               <span style="color: #000000; font-style: italic;">"{sentence_data.get('sentence', '')}"</span>
+           </div>
+       """, unsafe_allow_html=True)
+       
+       # Smart issue badge mapping (only show if not accepted)
+       if issues and not is_accepted:
+           issue_badges = ""
+           for issue in issues:
+               issue_clean = issue.lower().replace(' ', '').replace('banking', '').replace('complex', 'complexity')
+               if 'jargon' in issue_clean or 'technical' in issue_clean:
+                   badge_class = "badge-jargon"
+               elif 'length' in issue_clean or 'long' in issue_clean:
+                   badge_class = "badge-length"
+               elif 'passive' in issue_clean:
+                   badge_class = "badge-passive"
+               elif 'readability' in issue_clean or 'clarity' in issue_clean:
+                   badge_class = "badge-readability"
+               elif 'grammar' in issue_clean:
+                   badge_class = "badge-grammar"
+               else:
+                   badge_class = "badge-complexity"
+               
+               issue_badges += f'<span class="issue-badge {badge_class}">{issue}</span>'
+           
+           st.markdown(f"""
+           <div class="issues">
+               <strong>Issues Detected:</strong><br>
+               {issue_badges}
+           </div>
+           """, unsafe_allow_html=True)
+       
+       if not is_accepted:
+           # Show explanation
+           explanation = sentence_data.get('explanation', '')
+           if explanation:
+               st.markdown(f"**Why this is problematic:** {explanation}")
+           
+           # Show recommendations
+           recommendations = sentence_data.get('recommendations', [])
+           if recommendations:
+               st.markdown("**Specific Recommendations:**")
+               for rec in recommendations:
+                   st.markdown(f"• {rec}")
+       
+       # Show rewrite 
+       rewrite = sentence_data.get('rewrite', '')
+       if rewrite and rewrite != sentence_data.get('sentence', ''):
+            if is_accepted:
+                # Show accepted version with go back option
+                st.markdown(f"""
+                <div style="background: #f0fdf4; padding: 1rem; border-radius: 4px; margin: 1rem 0; border-left: 3px solid #059669;">
+                    <strong>✅ Accepted Version:</strong>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                issue_badges += f'<span class="issue-badge {badge_class}">{issue}</span>'
-            
-            st.markdown(f"""
-            <div class="issues">
-                <strong>Issues Detected:</strong><br>
-                {issue_badges}
-            </div>
-            """, unsafe_allow_html=True)
-        
-        if not is_accepted:
-            # Show explanation
-            explanation = sentence_data.get('explanation', '')
-            if explanation:
-                st.markdown(f"**Why this is problematic:** {explanation}")
-            
-            # Show recommendations
-            recommendations = sentence_data.get('recommendations', [])
-            if recommendations:
-                st.markdown("**Specific Recommendations:**")
-                for rec in recommendations:
-                    st.markdown(f"• {rec}")
-        
-        # Show rewrite
-        rewrite = sentence_data.get('rewrite', '')
-        if rewrite and rewrite != sentence_data.get('sentence', ''):
-            improved_title = "✅ Accepted Version:" if is_accepted else "Improved Version:"
-            st.markdown(f"""
-            <div class="improved">
-                <strong>{improved_title}</strong><br>
-                "{rewrite}"
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if not is_accepted:
-                # Action buttons (no columns, just regular buttons)
-                if st.button(f"Accept Improvement (+{potential_improvement:.1f}%)", key=f"accept_{i}"):
-                    st.session_state.accepted_improvements.add(i)
-                    st.session_state.estimated_score_gain += potential_improvement
-                    st.success(f"✅ Improvement accepted! Score increased by +{potential_improvement:.1f}%")
-                    st.rerun()
+                # Use Streamlit's code block with built-in copy button
+                st.code(rewrite, language=None)
                 
-                if st.button(f"Edit Recommendation", key=f"edit_{i}"):
-                    st.info("Opening content editor...")
-                    
-                if st.button(f"Regenerate Recommendation", key=f"regen_{i}"):
-                    st.info("Generating new recommendations...")
-            else:
-                # Show undo option for accepted recommendations
-                if st.button(f"Undo Acceptance", key=f"undo_{i}"):
+                # Single go back button
+                if st.button(f"↩️ Go Back", key=f"undo_{i}"):
                     st.session_state.accepted_improvements.discard(i)
                     st.session_state.estimated_score_gain -= potential_improvement
                     st.session_state.estimated_score_gain = max(0, st.session_state.estimated_score_gain)
                     st.warning(f"❌ Improvement undone. Score decreased by -{potential_improvement:.1f}%")
                     st.rerun()
-                    
-                st.markdown(f"<div style='color: #059669; font-weight: 500; padding: 0.5rem 0;'>✅ This recommendation has been accepted</div>", unsafe_allow_html=True)
-        
-        # Add separator
-        st.markdown("---")
+            
+            else:
+                # Not accepted - show normal improved version
+                st.markdown(f"""
+                <div class="improved">
+                    <strong>Improved Version:</strong>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Use Streamlit's code block with built-in copy button
+                st.code(rewrite, language=None)
+                
+                # Action buttons side by side
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button(f"Accept (+{potential_improvement:.1f}%)", key=f"accept_{i}"):
+                        st.session_state.accepted_improvements.add(i)
+                        st.session_state.estimated_score_gain += potential_improvement
+                        st.success(f"✅ Improvement accepted! Score increased by +{potential_improvement:.1f}%")
+                        st.rerun()
+                
+                with col2:
+                    if st.button(f"Edit/Regenerate", key=f"edit_{i}"):
+                        chat_key = f"chat_mode_{i}"
+                        if chat_key not in st.session_state.chat_mode:
+                            st.session_state.chat_mode[chat_key] = False
+                        st.session_state.chat_mode[chat_key] = not st.session_state.chat_mode[chat_key]
+                        st.rerun()
 
-def main():
-    # Load Belfius data
-    if st.session_state.belfius_data is None:
-        st.session_state.belfius_data = load_belfius_data()
+                with col3:
+                    # Empty column to maintain layout
+                    pass
+
+                # Chat interface for editing
+                chat_key = f"chat_mode_{i}"
+                if chat_key in st.session_state.chat_mode and st.session_state.chat_mode[chat_key]:
+                    st.markdown("---")
+                    st.markdown("### Edit this recommendation")
+                    
+                    # Display current sentence info
+                    st.markdown(f"""
+                    <div style="background: #f3f4f6; padding: 0.75rem; border-radius: 4px; margin: 0.5rem 0;">
+                        <strong>Original:</strong> {sentence_data.get('sentence', '')}
+                    </div>
+                    <div style="background: #ecfdf5; padding: 0.75rem; border-radius: 4px; margin: 0.5rem 0;">
+                        <strong>Current improved version:</strong> {rewrite}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Chat input
+                    user_input = st.text_input(
+                        "How would you like to improve this sentence?",
+                        placeholder="e.g., 'Make it shorter', 'Replace technical terms', 'Use simpler words'",
+                        key=f"chat_input_{i}"
+                    )
+                    
+                    col_send, col_close = st.columns([1, 3])
+                    
+                    with col_send:
+                        if st.button("Send", key=f"send_{i}") and user_input:
+                            with st.spinner("Getting suggestion..."):
+                                response = handle_sentence_edit_chat(
+                                    i, 
+                                    sentence_data.get('sentence', ''),
+                                    rewrite,
+                                    user_input,
+                                    st.session_state.gemini_api_key
+                                )
+                                st.markdown(f"**Assistant:** {response}")
+                                
+                                # Check if response contains a new sentence version
+                                if '"' in response and len(response) > 50:
+                                    st.success("💡 The assistant provided a new version. You can copy it manually or ask for more changes.")
+                    
+                    with col_close:
+                        if st.button("Close Editor", key=f"close_edit_{i}"):
+                            st.session_state.chat_mode[chat_key] = False
+                            st.rerun()
+                    
+                    st.markdown("---")
+
+       # Add separator after each issue
+       st.markdown("---")
+
+def handle_sentence_edit_chat(sentence_index, original_sentence, current_rewrite, user_input, api_key):
+    """Handle chat interaction for sentence editing"""
+    if not api_key:
+        return "Please provide your Gemini API key."
     
-    if st.session_state.belfius_data is None:
-        st.error("Could not load Belfius data. Please ensure the Excel file is available.")
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        # Simplified prompt for sentence-only output
+        prompt = f"""
+        **TASK:** Edit this sentence for CEFR B2 compliance based on the user's request. Return ONLY the improved sentence, nothing else.
+        
+        **ORIGINAL:** {original_sentence}
+        **CURRENT VERSION:** {current_rewrite}
+        **USER REQUEST:** {user_input}
+        
+        **RULES:**
+        - Return ONLY the improved sentence
+        - No explanations, no extra text
+        - Maintain banking accuracy and meaning
+        - Make it CEFR B2 compliant (simple, clear language)
+        - If the request is not about sentence editing, respond: "I can only help edit this sentence."
+        
+        **IMPROVED SENTENCE:**
+        """
+        
+        response = model.generate_content(prompt)
+        
+        # Clean the response to get just the sentence
+        improved_sentence = response.text.strip()
+        
+        # Remove quotes if Gemini added them
+        if improved_sentence.startswith('"') and improved_sentence.endswith('"'):
+            improved_sentence = improved_sentence[1:-1]
+        
+        return improved_sentence
+        
+    except Exception as e:
+        return f"Error: {str(e)}"
+   
+def main():
+    # Load Crelan data
+    if st.session_state.crelan_data is None:
+        st.session_state.crelan_data = load_crelan_data()
+    
+    if st.session_state.crelan_data is None:
+        st.error("Could not load Crelan data. Please ensure the Excel file is available.")
         return
     
     # Header with proper markdown rendering
     st.markdown(f"""
-    <div style="background: #F7E194; padding: 1rem 1.5rem; border-radius: 16px; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between;">
+    <div style="background: #FFFFFF; padding: 1rem 1.5rem; border-radius: 16px; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between;">
         <div style="padding: 0.75rem; border-radius: 12px; text-align: center;">
             <img src="data:image/png;base64,{logo_left}" width="120"/>
         </div>
         <div style="text-align: center; flex-grow: 1; padding: 0 2rem;">
-            <h1 style="color: #212529; margin: 0; font-weight: 700; font-size: 2.2rem;">CEFR B2 Compliance Analysis</h1>
-            <p style="color: #495057; margin: 0.5rem 0 0 0; font-size: 1rem;">Sentence-by-sentence recommendations for banking content</p>
+            <h1 style="color: #212529; margin: 0; font-weight: 700; font-size: 2.2rem;">CEFR B2 Compliance Tool</h1>
         </div>
         <div style="padding: 0.75rem; border-radius: 12px; text-align: center;">
-            <img src="data:image/png;base64,{logo_right}" width="120"/>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -949,58 +1094,59 @@ def main():
                 st.image("logos/sailpeak.png", width=150)
         except:
             st.markdown("**Sailpeak**")
-        
-        st.header("Navigation")
-        
-        # Show all pages checkbox
-        show_all_pages = st.checkbox("Show all pages (including compliant)", value=False)
-        
-        st.markdown("---")
-        
-        # Build hierarchical navigation
-        hierarchy = build_url_hierarchy(st.session_state.belfius_data)
-        
-        # Show breadcrumb if a page is selected
-        render_breadcrumb()
-        
-        # Start with root level navigation
-        st.subheader("🏠 belfius.be")
-        st.markdown("""
-        <div style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; 
-                    font-size: 0.75rem; 
-                    color: #666; 
-                    margin-bottom: 1rem;
-                    padding: 0.5rem;
-                    background: #f8f9fa;
-                    border-radius: 4px;">
-        📁 = Folder (click Toggle to expand)<br>
-        📄 = Page file<br>
-        <span style="color: #dc2626;">Red scores = &lt;50%</span><br>
-        <span style="color: #f59e0b;">Yellow scores = 50-69%</span><br>
-        <span style="color: #059669;">Green scores = ≥70%</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Render navigation tree
-        for idx, (node_name, node_data) in enumerate(sorted(hierarchy.items())):
-            is_last_root = (idx == len(hierarchy) - 1)
-            render_navigation_node(node_name, node_data, show_all=show_all_pages, is_last=is_last_root)
-        
-        st.markdown("---")
+
+        # Simple dropdown navigation (always show only non-compliant pages)
+        render_simple_url_dropdown(st.session_state.crelan_data, show_all=False)
         
         # Show selected page info
         if st.session_state.selected_url_info is not None:
             st.subheader("Selected Page")
-            render_url_info(st.session_state.selected_url_info)
+            score = st.session_state.selected_url_info['Compliance Level']
+            page_type = st.session_state.selected_url_info['Page Type']
+            
+            # Score styling
+            if score >= 70:
+                score_class = "score-good"
+                status = "✅ Compliant"
+            elif score >= 50:
+                score_class = "score-warning"
+                status = "⚠️ Needs Improvement"
+            else:
+                score_class = "score-danger"
+                status = "❌ Non-Compliant"
+            
+            st.markdown(f"""
+            <div class="score {score_class}">
+                {score}%<br>
+                <small>{status}</small>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f"""
+            <div class="info">
+                <strong>Page Type:</strong> {page_type}
+            </div>
+            """, unsafe_allow_html=True)
             
             # Get recommendations button
             get_recommendations_btn = st.button("🔍 Get Recommendations", type="primary")
         else:
-            st.info("👆 Select a page from the navigation above to get started")
+            st.info("👆 Select a page from the list above to get started")
             get_recommendations_btn = False
     
     # Main content area
     if st.session_state.selected_url_info is not None:
+        # Show current URL being analyzed
+        current_url = st.session_state.selected_url_info['URL']
+        page_name = extract_page_name_from_url(current_url)
+        
+        st.markdown(f"""
+        <div class="current-url">
+            <h3>📄 Currently Analyzing:</h3>
+            <div class="url-text">{current_url}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
         # Show current page summary
         col1, col2, col3 = st.columns(3)
         
@@ -1026,7 +1172,7 @@ def main():
                 page_score = st.session_state.selected_url_info['Compliance Level']
                 page_type = st.session_state.selected_url_info['Page Type']
                 
-                with st.spinner("Extracting content and analyzing with Gemini AI..."):
+                with st.spinner("Extracting content and analyzing with Sailpeak AI..."):
                     # Extract text from website
                     progress_bar = st.progress(0)
                     st.write("Extracting website content...")
@@ -1071,13 +1217,13 @@ def main():
         This tool helps you improve banking website content to meet CEFR B2 accessibility standards under the European Accessibility Act.
         
         ### How to get started:
-        1. **Navigate** through the Belfius website structure in the sidebar
+        1. **Navigate** through the page list in the sidebar
         2. **Select** a page by clicking on it (pages show compliance scores with 🔴🟡🟢 indicators)
         3. **Analyze** the page content with AI-powered recommendations
         4. **Accept** improvements to boost compliance scores
         
         ### Features:
-        - 🎯 **Sentence-level analysis** for precise improvements
+        - 🎯 **Section-level analysis** for precise improvements
         - 📊 **Real-time score tracking** with estimated improvements
         - 🌐 **Multi-language support** (Dutch, French, English)
         - 🏦 **Banking-specific** terminology and context awareness
@@ -1087,8 +1233,7 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #666; padding: 2rem;">
-        <p><strong>Sailpeak B2 Compliance Tool for Belfius</strong> - Powered by Gemini API</p>
-        <p>Sentence-level recommendations for CEFR B2 compliance under the European Accessibility Act</p>
+        <p><strong>Sailpeak B2 Compliance Tool for Crelan</strong> - Powered by Sailpeak AI Lab</p>
     </div>
     """, unsafe_allow_html=True)
 
