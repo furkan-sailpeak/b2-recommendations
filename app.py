@@ -312,7 +312,7 @@ if 'selected_url_score' not in st.session_state:
 if 'selected_url_info' not in st.session_state:
     st.session_state.selected_url_info = None
 if 'gemini_api_key' not in st.session_state:
-   st.session_state.gemini_api_key = "AIzaSyBzOT2O03scMENbdWouWexYa10v4K4OVPE"
+    st.session_state.gemini_api_key = os.getenv('GEMINI_API_KEY', '')
 if 'crelan_data' not in st.session_state:
     st.session_state.crelan_data = None
 if 'current_page_score' not in st.session_state:
